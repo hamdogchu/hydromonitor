@@ -1,121 +1,252 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'screens/detail_screen.dart'; // <--- ADD THIS LINE
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await Supabase.initialize(
+      url: 'https://YOUR_ACTUAL_PROJECT_ID.supabase.co', // MUST include https://
+      anonKey: 'YOUR_ACTUAL_ANON_KEY',
+    );
+  } catch (e) {
+    print('Supabase Initialization Error: $e');
+  }
+
+  runApp(const HydroMonitorApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class HydroMonitorApp extends StatelessWidget {
+  const HydroMonitorApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'HydroMonitor',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        scaffoldBackgroundColor: const Color(0xFF0D1117), // Dark theme from HTML
+        textTheme: const TextTheme(
+          bodyMedium: TextStyle(color: Color(0xFFE6EDF3), fontFamily: 'Inter'),
+        ),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const DashboardScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _DashboardScreenState extends State<DashboardScreen> {
+  // Listen to real-time changes in the Supabase 'scans' table
+/*
+  final _scanStream = Supabase.instance.client
+      .from('scans')
+      .stream(primaryKey: ['id'])
+      .order('created_at', ascending: false)
+      .limit(4); // Get the latest scan for the 4 trays
+*/
+  final Stream<List<Map<String, dynamic>>> _mockScanStream = Stream.value([
+    {
+      'id': 1,
+      'tray_id': 'TRAY-001',
+      'disease_detected': true,
+      'pest_detected': false,
+    },
+    {
+      'id': 2,
+      'tray_id': 'TRAY-002',
+      'disease_detected': false,
+      'pest_detected': true,
+    },
+    {
+      'id': 3,
+      'tray_id': 'TRAY-003',
+      'disease_detected': false,
+      'pest_detected': false,
+    },
+    {
+      'id': 4,
+      'tray_id': 'TRAY-004',
+      'disease_detected': true,
+      'pest_detected': true,
+    },
+  ]);
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0D1117),
+        title: const Text('HydroMonitor', style: TextStyle(color: Colors.white)),
+        elevation: 0,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(color: const Color(0xFF21262D), height: 1.0),
+        ),
+      ),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _mockScanStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text("Waiting for initial captures..."));
+          }
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+          final scans = snapshot.data!;
+
+          return Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: GridView.builder(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: 0.85,
+              ),
+              itemCount: scans.length,
+              itemBuilder: (context, index) {
+                final scan = scans[index];
+                return TrayCard(scan: scan);
+              },
+            ),
+          );
+        },
+      ),
+    );
   }
+}
+
+// Modular Widget for the Tray Card
+// Modular Widget for the Tray Card
+class TrayCard extends StatelessWidget {
+  final Map<String, dynamic> scan;
+
+  const TrayCard({super.key, required this.scan});
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+    // 1. Safely handle potential null values from the database
+    bool diseaseDetected = scan['disease_detected'] ?? false;
+    bool pestDetected = scan['pest_detected'] ?? false;
+    bool hasAlert = diseaseDetected || pestDetected;
+    
+    // If tray_id or disease_name is null in the DB, provide a fallback string
+    String trayId = scan['tray_id']?.toString() ?? 'Unknown Tray';
+    String diseaseName = scan['disease_name']?.toString() ?? 'Unknown Disease';
+
+    // 2. Wrap in an InkWell to make it clickable
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          PageRouteBuilder(
+            // Controls the speed of the transition
+            transitionDuration: const Duration(milliseconds: 400),
+            reverseTransitionDuration: const Duration(milliseconds: 300),
+            pageBuilder: (context, animation, secondaryAnimation) => DetailScreen(scan: scan),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              // 1. Subtle slide up from slightly below the screen
+              const begin = Offset(0.0, 0.05); 
+              const end = Offset.zero;
+              const curve = Curves.easeOutCubic; // Smooth deceleration
+
+              var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+              var offsetAnimation = animation.drive(tween);
+
+              // 2. Smooth fade in
+              var fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOut),
+              );
+
+              // 3. Combine both animations
+              return FadeTransition(
+                opacity: fadeAnimation,
+                child: SlideTransition(
+                  position: offsetAnimation,
+                  child: child,
+                ),
+              );
+            },
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(10), // Keeps the ripple effect inside the borders
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF161B22),
+          border: Border.all(color: const Color(0xFF21262D), width: 1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        padding: const EdgeInsets.all(12),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  trayId, // Safely using the fallback variable
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6E7681),
+                  ),
+                ),
+                // Alert Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: hasAlert ? const Color(0xFF2D1117) : const Color(0xFF0D2015),
+                    border: Border.all(
+                      color: hasAlert ? const Color(0xFF6E1C1C) : const Color(0xFF1A5C2A),
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    hasAlert ? 'Alert' : 'Clear',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: hasAlert ? const Color(0xFFF85149) : const Color(0xFF3FB950),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "Hydroponic Tray",
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+            const Divider(color: Color(0xFF21262D)),
+            // Disease Status
+            Row(
+              children: [
+                Container(
+                  width: 6, height: 6,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: diseaseDetected ? const Color(0xFFD29922) : const Color(0xFF238636),
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    diseaseDetected ? diseaseName : 'No disease', // Safely using the fallback variable
+                    style: const TextStyle(fontSize: 10, color: Color(0xFFC9D1D9)),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
       ),
     );
   }
