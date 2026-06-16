@@ -1,19 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'screens/detail_screen.dart'; // <--- ADD THIS LINE
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+// Import your dashboard screen from the screens folder
+import 'screens/dashboard_screen.dart';
+
+// Initialize the global notification plugin
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
 void main() async {
+  // 1. This MUST be the first line when using async setup in main()
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
+    // 2. Initialize Supabase
+    // Make sure your URL starts with https://
     await Supabase.initialize(
-      url: 'https://YOUR_ACTUAL_PROJECT_ID.supabase.co', // MUST include https://
-      anonKey: 'YOUR_ACTUAL_ANON_KEY',
+      url: 'https://eiqtrqnioobwslzntkdo.supabase.co', 
+      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVpcXRycW5pb29id3Nsem50a2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4OTk1NDMsImV4cCI6MjA5NjQ3NTU0M30.cUNW3nWp3D6iO2IjLsq1-8zLNz4_3i1bgEe8dy6Dyag',
     );
+
+    // 3. Initialize Local Notifications for Android
+    // This tells the app to use your default app icon for the notification
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+        
+    const InitializationSettings initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+    );
+    
+    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
   } catch (e) {
-    print('Supabase Initialization Error: $e');
+    // If anything fails (like a bad Supabase URL), it will print here 
+    // instead of crashing the app on the splash screen.
+    print('FATAL INITIALIZATION ERROR: $e');
   }
 
+  // 4. Launch the App
   runApp(const HydroMonitorApp());
 }
 
@@ -24,230 +48,21 @@ class HydroMonitorApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'HydroMonitor',
+      debugShowCheckedModeBanner: false,
+      // Global Theme matching your dark HTML design
       theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFF0D1117), // Dark theme from HTML
+        scaffoldBackgroundColor: const Color(0xFF0D1117), 
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF0D1117),
+          elevation: 0,
+          iconTheme: IconThemeData(color: Color(0xFF8B949E)),
+        ),
         textTheme: const TextTheme(
           bodyMedium: TextStyle(color: Color(0xFFE6EDF3), fontFamily: 'Inter'),
         ),
       ),
+      // Set the first screen the user sees
       home: const DashboardScreen(),
-    );
-  }
-}
-
-class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
-
-  @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
-}
-
-class _DashboardScreenState extends State<DashboardScreen> {
-  // Listen to real-time changes in the Supabase 'scans' table
-/*
-  final _scanStream = Supabase.instance.client
-      .from('scans')
-      .stream(primaryKey: ['id'])
-      .order('created_at', ascending: false)
-      .limit(4); // Get the latest scan for the 4 trays
-*/
-  final Stream<List<Map<String, dynamic>>> _mockScanStream = Stream.value([
-    {
-      'id': 1,
-      'tray_id': 'TRAY-001',
-      'disease_detected': true,
-      'pest_detected': false,
-    },
-    {
-      'id': 2,
-      'tray_id': 'TRAY-002',
-      'disease_detected': false,
-      'pest_detected': true,
-    },
-    {
-      'id': 3,
-      'tray_id': 'TRAY-003',
-      'disease_detected': false,
-      'pest_detected': false,
-    },
-    {
-      'id': 4,
-      'tray_id': 'TRAY-004',
-      'disease_detected': true,
-      'pest_detected': true,
-    },
-  ]);
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0D1117),
-        title: const Text('HydroMonitor', style: TextStyle(color: Colors.white)),
-        elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(color: const Color(0xFF21262D), height: 1.0),
-        ),
-      ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _mockScanStream,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("Waiting for initial captures..."));
-          }
-
-          final scans = snapshot.data!;
-
-          return Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-                childAspectRatio: 0.85,
-              ),
-              itemCount: scans.length,
-              itemBuilder: (context, index) {
-                final scan = scans[index];
-                return TrayCard(scan: scan);
-              },
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// Modular Widget for the Tray Card
-// Modular Widget for the Tray Card
-class TrayCard extends StatelessWidget {
-  final Map<String, dynamic> scan;
-
-  const TrayCard({super.key, required this.scan});
-
-  @override
-  Widget build(BuildContext context) {
-    // 1. Safely handle potential null values from the database
-    bool diseaseDetected = scan['disease_detected'] ?? false;
-    bool pestDetected = scan['pest_detected'] ?? false;
-    bool hasAlert = diseaseDetected || pestDetected;
-    
-    // If tray_id or disease_name is null in the DB, provide a fallback string
-    String trayId = scan['tray_id']?.toString() ?? 'Unknown Tray';
-    String diseaseName = scan['disease_name']?.toString() ?? 'Unknown Disease';
-
-    // 2. Wrap in an InkWell to make it clickable
-    return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          PageRouteBuilder(
-            // Controls the speed of the transition
-            transitionDuration: const Duration(milliseconds: 400),
-            reverseTransitionDuration: const Duration(milliseconds: 300),
-            pageBuilder: (context, animation, secondaryAnimation) => DetailScreen(scan: scan),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              // 1. Subtle slide up from slightly below the screen
-              const begin = Offset(0.0, 0.05); 
-              const end = Offset.zero;
-              const curve = Curves.easeOutCubic; // Smooth deceleration
-
-              var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-              var offsetAnimation = animation.drive(tween);
-
-              // 2. Smooth fade in
-              var fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOut),
-              );
-
-              // 3. Combine both animations
-              return FadeTransition(
-                opacity: fadeAnimation,
-                child: SlideTransition(
-                  position: offsetAnimation,
-                  child: child,
-                ),
-              );
-            },
-          ),
-        );
-      },
-      borderRadius: BorderRadius.circular(10), // Keeps the ripple effect inside the borders
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF161B22),
-          border: Border.all(color: const Color(0xFF21262D), width: 1),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  trayId, // Safely using the fallback variable
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF6E7681),
-                  ),
-                ),
-                // Alert Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: hasAlert ? const Color(0xFF2D1117) : const Color(0xFF0D2015),
-                    border: Border.all(
-                      color: hasAlert ? const Color(0xFF6E1C1C) : const Color(0xFF1A5C2A),
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    hasAlert ? 'Alert' : 'Clear',
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: hasAlert ? const Color(0xFFF85149) : const Color(0xFF3FB950),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              "Hydroponic Tray",
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-            ),
-            const Divider(color: Color(0xFF21262D)),
-            // Disease Status
-            Row(
-              children: [
-                Container(
-                  width: 6, height: 6,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: diseaseDetected ? const Color(0xFFD29922) : const Color(0xFF238636),
-                  ),
-                ),
-                const SizedBox(width: 5),
-                Expanded(
-                  child: Text(
-                    diseaseDetected ? diseaseName : 'No disease', // Safely using the fallback variable
-                    style: const TextStyle(fontSize: 10, color: Color(0xFFC9D1D9)),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
