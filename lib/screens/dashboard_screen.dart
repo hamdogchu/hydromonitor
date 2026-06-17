@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'wave_log_screen.dart'; // Relative import (same folder)
+import 'wave_log_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -12,7 +12,9 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   Timer? _timer;
-  int _secondsUntilNextWave = 1800;
+  int _secondsUntilNextWave = 0;
+  DateTime? _targetTime; // The exact time the next wave should start
+
   final _wavesStream = Supabase.instance.client
       .from('waves')
       .stream(primaryKey: ['id'])
@@ -22,8 +24,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    // This timer no longer just counts down. It checks the actual clock every second.
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_secondsUntilNextWave > 0) setState(() => _secondsUntilNextWave--);
+      if (_targetTime != null) {
+        setState(() {
+          _secondsUntilNextWave = _targetTime!.difference(DateTime.now()).inSeconds;
+          if (_secondsUntilNextWave < 0) _secondsUntilNextWave = 0; // Prevent negative numbers
+        });
+      }
     });
   }
 
@@ -61,11 +69,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _wavesStream,
         builder: (context, snapshot) {
+          if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+
           bool isMonitoring = false;
           if (snapshot.hasData && snapshot.data!.isNotEmpty) {
             final latestWave = snapshot.data!.first;
             isMonitoring = latestWave['status'] == 'monitoring';
-            if (isMonitoring) _secondsUntilNextWave = 1800; 
+            
+            // Calculate the exact target time based on database reality
+            if (isMonitoring) {
+              _targetTime = null; 
+            } else if (latestWave['completed_at'] != null) {
+              // Convert the database UTC time to the phone's local timezone
+              DateTime completedAt = DateTime.parse(latestWave['completed_at']).toLocal();
+              _targetTime = completedAt.add(const Duration(minutes: 30));
+            }
           }
 
           return Padding(
@@ -95,7 +113,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          isMonitoring ? 'Scanning 14 plants...' : 'Next wave in: ${_secondsUntilNextWave ~/ 60}:${(_secondsUntilNextWave % 60).toString().padLeft(2, '0')}',
+                          isMonitoring 
+                            ? 'Scanning 14 plants...' 
+                            : 'Next wave in: ${_secondsUntilNextWave ~/ 60}:${(_secondsUntilNextWave % 60).toString().padLeft(2, '0')}',
                           style: TextStyle(color: isMonitoring ? const Color(0xFF58A6FF) : const Color(0xFF8B949E)),
                         ),
                       ],

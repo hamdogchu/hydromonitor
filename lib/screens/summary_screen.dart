@@ -10,7 +10,7 @@ class SummaryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
-      appBar: AppBar(backgroundColor: const Color(0xFF0D1117), title: const Text('Wave Summary')),
+      appBar: AppBar(backgroundColor: const Color(0xFF0D1117), title: const Text('Wave Summary', style: TextStyle(color: Colors.white))),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: Supabase.instance.client.from('wave_images').select().eq('wave_id', waveId),
         builder: (context, snapshot) {
