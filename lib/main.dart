@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/gestures.dart';
 
 // Import your dashboard screen from the screens folder
 import 'screens/dashboard_screen.dart';
@@ -49,6 +50,7 @@ class HydroMonitorApp extends StatelessWidget {
     return MaterialApp(
       title: 'Farm Guard Lite',
       debugShowCheckedModeBanner: false,
+      scrollBehavior: AppScrollBehavior(),
       // Global Theme matching your dark HTML design
       theme: ThemeData(
         // 1. Kill the white flash by forcing all underlying canvases to be dark
@@ -77,4 +79,12 @@ class HydroMonitorApp extends StatelessWidget {
       home: const DashboardScreen(),
     );
   }
+}
+class AppScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse, // <-- This is the magic line for the RPi Touchscreen
+        PointerDeviceKind.trackpad,
+      };
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../widgets/offline_warning.dart';
 import 'summary_screen.dart';
 
 class WaveLogScreen extends StatelessWidget {
@@ -13,7 +14,20 @@ class WaveLogScreen extends StatelessWidget {
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: Supabase.instance.client.from('waves').stream(primaryKey: ['id']), // Removed SQL order, doing it in Dart
         builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+          if (snapshot.hasError) {
+            return OfflineWarningWidget(
+              onRetry: () {
+                // Instantly reloads the current screen route
+                Navigator.pushReplacement(
+                  context,
+                  PageRouteBuilder(
+                    pageBuilder: (context, a1, a2) => const WaveLogScreen(),
+                    transitionDuration: Duration.zero,
+                  ),
+                );
+              },
+            );
+          }
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           
           final waves = snapshot.data!;

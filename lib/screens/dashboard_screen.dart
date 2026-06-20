@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'wave_log_screen.dart';
+import 'package:hydromonitor/widgets/offline_warning.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -69,7 +70,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _wavesStream,
         builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+          if (snapshot.hasError) {
+            // Rebuilds the stream to attempt a new connection
+            return OfflineWarningWidget(
+              onRetry: () => setState(() {}),
+            );
+          }
 
           bool isMonitoring = false;
           if (snapshot.hasData && snapshot.data!.isNotEmpty) {
