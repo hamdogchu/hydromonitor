@@ -47,11 +47,24 @@ class HydroMonitorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'HydroMonitor',
+      title: 'Farm Guard Lite',
       debugShowCheckedModeBanner: false,
       // Global Theme matching your dark HTML design
       theme: ThemeData(
+        // 1. Kill the white flash by forcing all underlying canvases to be dark
         scaffoldBackgroundColor: const Color(0xFF0D1117), 
+        canvasColor: const Color(0xFF0D1117), 
+        
+        // 2. Set up global, professional screen transitions
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: <TargetPlatform, PageTransitionsBuilder>{
+            // Use a smooth, subtle fade-up for Android
+            TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+            // Keep the native smooth slide for iOS
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
+
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF0D1117),
           elevation: 0,
@@ -61,7 +74,6 @@ class HydroMonitorApp extends StatelessWidget {
           bodyMedium: TextStyle(color: Color(0xFFE6EDF3), fontFamily: 'Inter'),
         ),
       ),
-      // Set the first screen the user sees
       home: const DashboardScreen(),
     );
   }

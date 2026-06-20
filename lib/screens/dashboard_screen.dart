@@ -63,7 +63,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: const Color(0xFF0D1117),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D1117),
-        title: const Text('HydroMonitor', style: TextStyle(color: Colors.white)),
+        title: const Text('Farm Guard Lite', style: TextStyle(color: Colors.white)),
         elevation: 0,
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
