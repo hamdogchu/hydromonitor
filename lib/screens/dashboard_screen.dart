@@ -16,7 +16,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _secondsUntilNextWave = 0;
   DateTime? _targetTime; 
 
-  // Make streams late so we can re-initialize them on refresh
   late Stream<List<Map<String, dynamic>>> _wavesStream;
   late Stream<List<Map<String, dynamic>>> _settingsStream;
 
@@ -47,12 +46,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .eq('id', 1); 
   }
 
-  // --- NEW: Manual Refresh Function ---
   Future<void> _refreshData() async {
     setState(() {
-      _initStreams(); // Re-binds the streams to force a fresh data fetch
+      _initStreams(); 
     });
-    // Add a slight delay so the user sees the refresh animation
     await Future.delayed(const Duration(milliseconds: 600));
   }
 
@@ -137,11 +134,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _confirmAction({
-    required String title,
-    required String content,
-    required VoidCallback onConfirm,
-  }) async {
+  Future<void> _confirmAction({required String title, required String content, required VoidCallback onConfirm}) async {
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -164,9 +157,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     );
 
-    if (confirm == true) {
-      onConfirm();
-    }
+    if (confirm == true) onConfirm();
   }
 
   void _showIntervalDialog(int currentInterval) {
@@ -223,24 +214,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: const Color(0xFF0D1117),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D1117),
-        title: const Text('Farm Guard Lite', style: TextStyle(color: Colors.white)),
+        title: const Text('HydroMonitor', style: TextStyle(color: Colors.white)),
         elevation: 0,
         actions: [
-          // --- NEW: App Bar Refresh Button ---
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF8B949E)),
-            onPressed: _refreshData,
-            tooltip: 'Refresh Data',
-          ),
+          IconButton(icon: const Icon(Icons.refresh, color: Color(0xFF8B949E)), onPressed: _refreshData),
         ],
       ),
-      // --- NEW: Pull-to-Refresh Wrapper ---
       body: RefreshIndicator(
         onRefresh: _refreshData,
         backgroundColor: const Color(0xFF161B22),
         color: const Color(0xFF58A6FF),
         child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(), // Ensures pull-to-refresh works even if screen isn't full
+          physics: const AlwaysScrollableScrollPhysics(), 
           child: StreamBuilder<List<Map<String, dynamic>>>(
             stream: _settingsStream,
             builder: (context, settingsSnapshot) {
@@ -252,6 +237,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final settings = settingsSnapshot.data?.isNotEmpty == true ? settingsSnapshot.data!.first : null;
               final bool isPaused = settings?['is_paused'] ?? false;
               final int intervalMins = settings?['interval_minutes'] ?? 30;
+              final bool isScanning = settings?['is_scanning'] ?? false; 
+
+              // Heartbeat logic
+              bool isPiOffline = true;
+              if (settings != null && settings['last_heartbeat'] != null) {
+                // Use UTC to prevent timezone glitches and .abs() to prevent clock-drift bugs!
+                final hb = DateTime.parse(settings['last_heartbeat']).toUtc();
+                final secondsSincePing = DateTime.now().toUtc().difference(hb).inSeconds;
+                
+                // Increased tolerance to 120 seconds
+                if (secondsSincePing.abs() < 120) {
+                  isPiOffline = false; 
+                }
+              }
+
+              // OVERRIDE: If the Pi says it is actively scanning, it is definitely not offline!
+              if (isScanning) {
+                isPiOffline = false;
+              }
 
               return StreamBuilder<List<Map<String, dynamic>>>(
                 stream: _wavesStream,
@@ -261,30 +265,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: OfflineWarningWidget(onRetry: _refreshData),
                   );
 
-                  bool isMonitoring = false;
                   if (waveSnapshot.hasData && waveSnapshot.data!.isNotEmpty) {
                     final latestWave = waveSnapshot.data!.first;
-                    isMonitoring = latestWave['status'] == 'monitoring';
                     
-                    if (isMonitoring || isPaused) {
+                    if (isScanning || isPaused) {
                       _targetTime = null; 
                     } else if (latestWave['completed_at'] != null) {
                       DateTime completedAt = DateTime.parse(latestWave['completed_at']).toLocal();
                       _targetTime = completedAt.add(Duration(minutes: intervalMins));
-                    }
-                  }
-
-                  // --- NEW: Heartbeat Check ---
-                  bool isPiOffline = true;
-                  if (settings != null && settings['last_heartbeat'] != null) {
-                    final hb = DateTime.parse(settings['last_heartbeat']).toLocal();
-                    final secondsSincePing = DateTime.now().difference(hb).inSeconds;
-                    
-                    if (secondsSincePing < 30) {
-                      isPiOffline = false; // It pinged recently!
-                    } else if (isMonitoring && secondsSincePing < 600) {
-                      // If it's busy scanning, it can't ping. Give it 10 minutes before assuming it's dead.
-                      isPiOffline = false; 
                     }
                   }
 
@@ -328,20 +316,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 Row(
                                   children: [
                                     Icon(
-                                      isPiOffline ? Icons.warning_amber_rounded : (isMonitoring ? Icons.camera_alt : Icons.timer),
-                                      color: isPiOffline ? Colors.red : (isMonitoring ? const Color(0xFF58A6FF) : const Color(0xFF8B949E)),
+                                      isPiOffline ? Icons.warning_amber_rounded : (isScanning ? Icons.camera_alt : Icons.timer),
+                                      color: isPiOffline ? Colors.red : (isScanning ? const Color(0xFF58A6FF) : const Color(0xFF8B949E)),
                                       size: 16,
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
                                       isPiOffline
                                         ? 'Connection to Raspberry Pi lost.'
-                                        : isMonitoring 
+                                        : isScanning 
                                             ? 'Scanning 14 plants...' 
                                             : isPaused 
                                                 ? 'Monitoring Suspended'
-                                                : 'Next wave in: ${_secondsUntilNextWave ~/ 60}:${(_secondsUntilNextWave % 60).toString().padLeft(2, '0')}',
-                                      style: TextStyle(color: isPiOffline ? Colors.red : (isMonitoring ? const Color(0xFF58A6FF) : const Color(0xFF8B949E))),
+                                                : _secondsUntilNextWave <= 0 
+                                                    ? 'Preparing next scan...' 
+                                                    : 'Next wave in: ${_secondsUntilNextWave ~/ 60}:${(_secondsUntilNextWave % 60).toString().padLeft(2, '0')}',
+                                      style: TextStyle(color: isPiOffline ? Colors.red : (isScanning ? const Color(0xFF58A6FF) : const Color(0xFF8B949E))),
                                     ),
                                   ],
                                 ),
@@ -355,9 +345,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       color: isPiOffline ? const Color(0xFF30363D) : (isPaused ? const Color(0xFF3FB950) : Colors.orange),
                                       onTap: isPiOffline ? null : () => _confirmAction(
                                         title: isPaused ? "Resume Monitoring" : "Pause Monitoring",
-                                        content: isPaused 
-                                            ? "Are you sure you want to resume the automatic scanning schedule?" 
-                                            : "Are you sure you want to pause the automatic scanning schedule?",
+                                        content: isPaused ? "Resume automatic schedule?" : "Pause automatic schedule?",
                                         onConfirm: () => _togglePause(isPaused),
                                       ),
                                     ),
@@ -365,9 +353,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       icon: Icons.flash_on, 
                                       label: "Scan Now", 
                                       color: isPiOffline ? const Color(0xFF30363D) : const Color(0xFF58A6FF),
-                                      onTap: (isMonitoring || isPiOffline) ? null : () => _confirmAction(
+                                      onTap: (isScanning || isPiOffline) ? null : () => _confirmAction(
                                         title: "Trigger Manual Scan",
-                                        content: "Are you sure you want to trigger a manual scan right now? This will reset the current timer.",
+                                        content: "Trigger a manual scan right now?",
                                         onConfirm: _forceTrigger,
                                       ),
                                     ),

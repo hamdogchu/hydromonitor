@@ -4,7 +4,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/gestures.dart';
 
 // Import your dashboard screen from the screens folder
-import 'screens/dashboard_screen.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'screens/dashboard_screen.dart' as mobile;
+import 'screens/dashboard_screen_lcd.dart' as lcd;
 
 // Initialize the global notification plugin
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -76,7 +78,7 @@ class HydroMonitorApp extends StatelessWidget {
           bodyMedium: TextStyle(color: Color(0xFFE6EDF3), fontFamily: 'Inter'),
         ),
       ),
-      home: const DashboardScreen(),
+      home: kIsWeb ? const lcd.DashboardScreen() : const mobile.DashboardScreen(),
     );
   }
 }
