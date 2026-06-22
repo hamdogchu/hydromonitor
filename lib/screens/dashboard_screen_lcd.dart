@@ -2,8 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:web/web.dart' as web; // <--- CHANGED: Use the modern, Wasm-ready web package
+import 'package:web/web.dart' as web; 
 import '../widgets/wifi_dialog.dart';
 import 'wave_log_screen.dart';
 import 'offline_queue_screen.dart';
@@ -27,35 +26,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLocalApiOffline = false;
 
   int _secondsUntilNextWave = 0; 
-  DateTime? _targetTime; 
-
-  late Stream<List<Map<String, dynamic>>> _wavesStream;
+  
+  // Track timestamps 100% locally
+  DateTime? _localLastCompletedTime; 
 
   @override
   void initState() {
     super.initState();
     
-    // Fallback stream from Supabase (handles offline gracefully)
-    _wavesStream = Supabase.instance.client
-        .from('waves')
-        .stream(primaryKey: ['id'])
-        .order('created_at', ascending: false)
-        .limit(1);
+    // Start counting down from the moment the app boots
+    _localLastCompletedTime = DateTime.now();
 
     // 1. Fetch Local Flask API settings every 2 seconds
     _localApiPoller = Timer.periodic(const Duration(seconds: 2), (timer) {
       _fetchLocalSettings();
     });
 
-    // 1.5 Local UI Timer for the countdown
+    // 1.5 Pure Local UI Timer
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_targetTime != null) {
-        if (mounted) {
-          setState(() {
-            _secondsUntilNextWave = _targetTime!.difference(DateTime.now()).inSeconds;
-            if (_secondsUntilNextWave < 0) _secondsUntilNextWave = 0; 
-          });
-        }
+      if (_isScanning || _isUploading || _isPaused) return; // Don't tick while busy
+
+      if (_localLastCompletedTime != null && mounted) {
+        setState(() {
+          int elapsed = DateTime.now().difference(_localLastCompletedTime!).inSeconds;
+          int intervalSecs = _intervalMins * 60;
+          
+          if (elapsed < intervalSecs) {
+            _secondsUntilNextWave = intervalSecs - elapsed;
+          } else {
+            // Wait at 0 until the Python script triggers the next scan
+            _secondsUntilNextWave = 0;
+          }
+        });
       }
     });
   }
@@ -70,16 +72,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // --- LOCAL API COMMUNICATION ---
   Future<void> _fetchLocalSettings() async {
     try {
-      final response = await http.get(Uri.parse('http://127.0.0.1:5000/settings')).timeout(const Duration(seconds: 1));
+      // --- THE FIX: CACHE BUSTER ---
+      // Adding a unique timestamp forces the browser to actually ask Python for fresh data!
+      final String cacheBuster = DateTime.now().millisecondsSinceEpoch.toString();
+      final uri = Uri.parse('http://127.0.0.1:5000/settings?t=$cacheBuster');
+      
+      final response = await http.get(uri).timeout(const Duration(seconds: 1));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (mounted) {
           setState(() {
+            bool wasBusy = _isScanning || _isUploading;
+
             _isPaused = data['is_paused'] ?? false;
             _intervalMins = data['interval_minutes'] ?? 30;
-            _isScanning = data['is_scanning'] ?? false; 
+            
+            // Read force_trigger to prevent the UI from flickering back to 'Waiting'
+            bool isServerScanning = data['is_scanning'] ?? false;
+            bool isForceTriggerPending = data['force_trigger'] ?? false;
+            _isScanning = isServerScanning || isForceTriggerPending; 
+            
             _isUploading = data['is_uploading'] ?? false;
             _isLocalApiOffline = false;
+
+            // Read the exact timestamp signal from Python!
+            if (data.containsKey('last_completed') && data['last_completed'] != null) {
+              _localLastCompletedTime = DateTime.parse(data['last_completed']).toLocal();
+            } else {
+              // Fallback if Python hasn't sent the signal yet
+              bool isBusy = _isScanning || _isUploading;
+              if (wasBusy && !isBusy) {
+                _localLastCompletedTime = DateTime.now();
+              }
+            }
           });
         }
       }
@@ -103,13 +128,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // --- CHANGED: Native Web Fullscreen Toggle using package:web ---
+  // --- NATIVE WEB FULLSCREEN TOGGLE ---
   void _toggleFullscreen() {
-    // Check if the browser is already in fullscreen mode using the modern API
     if (web.document.fullscreenElement != null) {
-      web.document.exitFullscreen(); // Native exit
+      web.document.exitFullscreen(); 
     } else {
-      web.document.documentElement?.requestFullscreen(); // Native enter
+      web.document.documentElement?.requestFullscreen(); 
     }
   }
 
@@ -223,49 +247,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const Text('Tray 1', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 12),
                       
-                      // Status & Timer Stream
-                      StreamBuilder<List<Map<String, dynamic>>>(
-                        stream: _wavesStream,
-                        builder: (context, waveSnapshot) {
-                          bool isInternetOffline = waveSnapshot.hasError;
-
-                          if (waveSnapshot.hasData && waveSnapshot.data!.isNotEmpty) {
-                            final latestWave = waveSnapshot.data!.first;
-                            
-                            if (_isScanning || _isUploading || _isPaused) {
-                              _targetTime = null; 
-                            } else if (latestWave['completed_at'] != null) {
-                              DateTime completedAt = DateTime.parse(latestWave['completed_at']).toLocal();
-                              _targetTime = completedAt.add(Duration(minutes: _intervalMins));
-                            }
-                          }
-
-                          return Row(
-                            children: [
-                              Icon(
-                                _isLocalApiOffline ? Icons.warning_amber_rounded 
-                                    : (_isScanning ? Icons.camera_alt 
-                                    : (_isUploading ? Icons.cloud_upload 
-                                    : (isInternetOffline ? Icons.wifi_off : Icons.timer))),
-                                color: _isLocalApiOffline ? Colors.red : (_isScanning || _isUploading ? const Color(0xFF58A6FF) : const Color(0xFF8B949E)),
-                                size: 16,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _isLocalApiOffline ? 'Main.py script is not running.' 
-                                      : _isScanning ? 'Scanning 14 plants...' 
-                                      : _isUploading ? 'Uploading to Cloud...'
-                                      : _isPaused ? 'Monitoring Suspended'
-                                      : _secondsUntilNextWave <= 0 
-                                          ? 'Preparing next scan...' 
-                                          : (isInternetOffline ? 'Offline Mode - Next wave in: ' : 'Next wave in: ') + '${_secondsUntilNextWave ~/ 60}:${(_secondsUntilNextWave % 60).toString().padLeft(2, '0')}',
-                                  style: TextStyle(color: _isLocalApiOffline ? Colors.red : (_isScanning || _isUploading ? const Color(0xFF58A6FF) : const Color(0xFF8B949E))),
-                                ),
-                              ),
-                            ],
-                          );
-                        }
+                      // 100% Local Status & Timer 
+                      Row(
+                        children: [
+                          Icon(
+                            _isLocalApiOffline ? Icons.warning_amber_rounded 
+                                : (_isScanning ? Icons.camera_alt 
+                                : (_isUploading ? Icons.cloud_upload 
+                                : Icons.timer)),
+                            color: _isLocalApiOffline ? Colors.red : (_isScanning || _isUploading ? const Color(0xFF58A6FF) : const Color(0xFF8B949E)),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _isLocalApiOffline ? 'Main.py script is not running.' 
+                                  : _isScanning ? 'Scanning 14 plants...' 
+                                  : _isUploading ? 'Uploading to Cloud...'
+                                  : _isPaused ? 'Monitoring Suspended'
+                                  : _secondsUntilNextWave <= 0 
+                                      ? 'Preparing next scan...' 
+                                      : 'Next wave in: ${_secondsUntilNextWave ~/ 60}:${(_secondsUntilNextWave % 60).toString().padLeft(2, '0')}',
+                              style: TextStyle(color: _isLocalApiOffline ? Colors.red : (_isScanning || _isUploading ? const Color(0xFF58A6FF) : const Color(0xFF8B949E))),
+                            ),
+                          ),
+                        ],
                       ),
                       
                       const Divider(color: Color(0xFF30363D), height: 30),
@@ -278,7 +284,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             icon: Icons.play_arrow, 
                             label: "Scan Now", 
                             color: _isLocalApiOffline || _isScanning || _isUploading ? const Color(0xFF30363D) : const Color(0xFF3FB950),
-                            onTap: _isLocalApiOffline || _isScanning || _isUploading ? null : () => _updateLocalSettings({'force_trigger': true}),
+                            onTap: _isLocalApiOffline || _isScanning || _isUploading ? null : () {
+                              // Instantly lock the UI into Scanning Mode so the button feels responsive
+                              setState(() => _isScanning = true);
+                              _updateLocalSettings({'force_trigger': true});
+                              
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Manual scan triggered! Waking up hardware...'), 
+                                  backgroundColor: Color(0xFF238636),
+                                  duration: Duration(seconds: 2),
+                                )
+                              );
+                            },
                           ),
                           _buildControlBtn(
                             icon: _isPaused ? Icons.play_circle_fill : Icons.pause_circle_filled, 

@@ -21,7 +21,7 @@ void main() async {
     await Supabase.initialize(
       url: 'https://eiqtrqnioobwslzntkdo.supabase.co', 
       anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVpcXRycW5pb29id3Nsem50a2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4OTk1NDMsImV4cCI6MjA5NjQ3NTU0M30.cUNW3nWp3D6iO2IjLsq1-8zLNz4_3i1bgEe8dy6Dyag',
-    );
+    ).timeout(const Duration(seconds: 5));
 
     // 3. Initialize Local Notifications for Android
     // This tells the app to use your default app icon for the notification
