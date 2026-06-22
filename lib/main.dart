@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/cupertino.dart';
 
 // Import your dashboard screen from the screens folder
 import 'package:flutter/foundation.dart' show kIsWeb;

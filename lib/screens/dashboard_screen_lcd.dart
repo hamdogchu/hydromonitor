@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:web/web.dart' as web; 
+//import 'package:web/web.dart' as web; 
 import '../widgets/wifi_dialog.dart';
 import 'wave_log_screen.dart';
 import 'offline_queue_screen.dart';
@@ -130,11 +130,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // --- NATIVE WEB FULLSCREEN TOGGLE ---
   void _toggleFullscreen() {
+    /*
     if (web.document.fullscreenElement != null) {
       web.document.exitFullscreen(); 
     } else {
       web.document.documentElement?.requestFullscreen(); 
     }
+    */
   }
 
   // --- DIALOGS & NAVIGATION ---
